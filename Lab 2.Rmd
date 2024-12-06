@@ -346,6 +346,24 @@ The model in Part 4 omits the intercept and uses raw optimization, making it les
 
 ## Theory
 
+What are the practical approaches for reducing the expected new data error, according to the book?
+
+
+Practical approaches for reducing the expected new data error (E_new): To minimize the expected new data error (E_new), it is essential to simultaneously reduce the training error (E_train) and the generalization gap. Increasing the size of the training dataset is a practical approach since it typically decreases the generalization gap while slightly increasing E_train. Adjusting the model's flexibility—either increasing it if E_train is too high or decreasing it to reduce overfitting—is another key strategy. Cross-validation can help monitor the trade-off between E_train and E_new effectively. Pages 63-71
+
+
+What important aspect should be considered when selecting minibatches, according to the book?
+
+
+An important aspect to consider when selecting minibatches is subsampling, as explained on page 124 of the book. Subsampling involves selecting only a subset of the training data to compute the gradient at each iteration, which reduces computational cost while maintaining sufficient information for optimization. The book emphasizes that this method efficiently balances the use of all training data over multiple iterations without needing to process the entire dataset at once, making it suitable for large datasets.
+
+
+Provide an example of modifications in a loss function and in data that can be done to take into account the data imbalance, according to the book
+
+
+Example of modifications in a loss function and data to address data imbalance:
+An example of modifications to a loss function and data to address data imbalance is provided on page 101-102. The book explains that the loss function can be modified to assign different penalties to different types of errors. For instance, in a binary classification problem, a misclassification loss can be adjusted such that predicting the positive class (y=1) incorrectly is considered C times more severe than predicting the negative class (y=−1) incorrectly. 
+Alternatively, the data itself can be adjusted by duplicating the positive class examples C times in the dataset, effectively balancing the data without modifying the loss function.
 
 
 ### Appendix
