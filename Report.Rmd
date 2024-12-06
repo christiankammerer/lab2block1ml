@@ -1,0 +1,281 @@
+---
+title: "Lab 2 Report"
+author: "Christian Kammerer"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Load necessary package
+library(rpart)
+library(ggplot2)
+library(dplyr)
+library(caret)
+
+# Loading data
+data <- read.csv('bank-full.csv', sep = ";")
+data <- data[, !names(data) %in% c("duration")]
+data$y <- factor(data$y)
+# Train, Test, Validation Split
+n=dim(data)[1]
+set.seed(12345) 
+id=sample(1:n, floor(n*0.4)) 
+train=data[id,] 
+id1=setdiff(1:n, id)
+set.seed(12345) 
+id2=sample(id1, floor(n*0.3)) 
+valid=data[id2,]
+id3=setdiff(id1,id2)
+test=data[id3,] 
+```
+
+## Assignment 2
+### Experiment regarding over- and underfitting
+**Task statement:**<br>
+Fit decision trees to the training data so that you change the default settings one by one (i.e. not simultaneously): a. Decision Tree with default settings.
+b. Decision Tree with smallest allowed node size equal to 7000.
+c. Decision trees minimum deviance to 0.0005.
+and report the misclassification rates for the training and validation data. Which model is the best one among these three? Report how changing the deviance and node size affected the size of the trees and explain why.
+```{r experiment1, echo=FALSE, warning=FALSE, message=FALSE}
+
+# Function to evaluate model 
+evaluate_decision_tree <- function(train_data, valid_data, control_params, model_name) {
+  # Train the decision tree with specified control parameters
+  model <- rpart(y ~ ., data = train_data, method = "class", control = control_params)
+  
+  # Predict on training and validation data
+  train_pred <- predict(model, train_data, type = "class")
+  valid_pred <- predict(model, valid_data, type = "class")
+  
+  # Calculate misclassification rates
+  train_mis <- mean(train_pred != train_data$y)
+  valid_mis <- mean(valid_pred != valid_data$y)
+  
+  # Return results as a list
+  list(
+    Model = model_name,
+    Train_Misclassification = train_mis,
+    Validation_Misclassification = valid_mis,
+    Model_Object = model
+  )
+}
+
+control_default <- rpart.control()  # Default settings
+control_node_size <- rpart.control(minbucket = 7000)  # Minimum node size = 7000
+control_deviance <- rpart.control(cp = 0.0005)  # Minimum deviance = 0.0005
+
+
+results <- list(
+  evaluate_decision_tree(train, valid, control_default, "Default"),
+  evaluate_decision_tree(train, valid, control_node_size, "Min Node Size = 7000"),
+  evaluate_decision_tree(train, valid, control_deviance, "Min Deviance = 0.0005")
+)
+
+results_df <- do.call(rbind, lapply(results, function(x) data.frame(
+  Model = x$Model,
+  "Missclassification Error Training" = round(x$Train_Misclassification, 4),
+  "Missclassification Error Validation" = round(x$Validation_Misclassification, 4)
+)))
+
+
+tree_sizes <- sapply(results, function(x) {
+  model <- x$Model_Object
+  length(unique(model$where))  # Count leaf nodes
+})
+
+# Add tree sizes to the results
+results_df$Tree_Size <- tree_sizes
+knitr::kable(results_df, caption = "Results from Experiment 1")
+```
+As we can observe in the table above, the model which performs best on the validation data set, is the one that is being trained using the default model parameters. This is because the two other models, are either underfitting,  or overfitting the training data.<br>
+
+*Why is model 2 underfitting?*<br>
+Model 2 requires at least 7000 observations per leaf node. However, as the training data consists only of 2066 observations for the minority class, this prevents the model from performing any splits. Therefore the model consists of a single root node (see Tree Size column), which assigns every data point the label of the majority class.
+This can further be proven by the fact, that the number of minority class data points (2066) in the training set divided by the total number of observations (18084) in the training data equals to the missclassification error of model 2 on the training data (0.1142).
+
+*Why is model 3 overfitting?*<br>
+The fact that model 3 performs significantly better on the training data, than on the validation data is indicative of overfitting. This is caused by us lowering the minimum deviance parameter from the default value of 0.01 to 0.0005. This causes the tree to branch out to an extreme degree, which is shown by the 115 leaf nodes that are present.
+
+### Determining the optimal tree depth
+**Task statement:** <br>
+Use training and validation sets to choose the optimal tree depth in the model 2c: study the trees up to 50 leaves. Present a graph of the dependence of deviances for the training and the validation data on the number of leaves and interpret this graph in terms of bias-variance tradeoff. Report the optimal amount of leaves and which variables seem to be most important for decision making in this tree. Interpret the information provided by the tree structure (not everything but most important findings).
+
+```{r experiment-2, echo=FALSE, warning=FALSE, message=FALSE}
+full_tree <- rpart(y ~ ., data = train, method = "class", 
+                     control = rpart.control(cp = 0.0005))
+  
+# Ensure cptable exists and is valid
+if (is.null(full_tree$cptable) || nrow(full_tree$cptable) == 0) {
+  stop("cptable is empty or invalid. Check the full_tree object.")
+}
+
+# Extract the complexity table
+cptable <- full_tree$cptable
+
+# Initialize storage for results
+results <- data.frame(Leaves = integer(), Train_Deviance = numeric(), Valid_Deviance = numeric())
+
+# Loop through pruning levels
+for (i in 1:nrow(cptable)) {
+  # Prune the tree to the current cp value
+  pruned_tree <- prune(full_tree, cp = cptable[i, "CP"])
+  
+  # Count the number of leaves
+  num_leaves <- length(unique(pruned_tree$where))
+  
+  # Skip trees with more than 50 leaves
+  if (num_leaves > 50) {
+    next
+  }
+  
+  # Compute deviances
+  train_probs <- predict(pruned_tree, train, type = "prob")
+  train_dev <- -sum(log(train_probs[cbind(1:nrow(train), as.numeric(train$y))]))
+  valid_probs <- predict(pruned_tree, valid, type = "prob")
+  valid_dev <- -sum(log(valid_probs[cbind(1:nrow(valid), as.numeric(valid$y))]))
+  
+  results <- rbind(results, data.frame(Leaves = num_leaves, Train_Deviance = train_dev, Valid_Deviance = valid_dev))
+}
+
+# Normalize deviances
+results <- results %>%
+  mutate(
+    Train_Deviance_Normalized = Train_Deviance / nrow(train),
+    Valid_Deviance_Normalized = Valid_Deviance / nrow(valid)
+  )
+
+# Create the plot
+p <- ggplot(results, aes(x = Leaves)) +
+  geom_line(aes(y = Train_Deviance_Normalized, color = "Training"), size = 1.2) +
+  geom_line(aes(y = Valid_Deviance_Normalized, color = "Validation"), size = 1.2) +
+  labs(
+    title = "Normalized Deviance vs Number of Leaves (Pruned Trees)",
+    x = "Number of Leaves",
+    y = "Normalized Deviance (Per Observation)",
+    color = "Dataset"
+  ) +
+  theme_minimal()
+
+# Identify the optimal number of leaves
+optimal_leaves <- results$Leaves[which.min(results$Valid_Deviance)]
+optimal_cp <- cptable[which(results$Leaves == optimal_leaves), "CP"]
+optimal_tree <- prune(full_tree, cp = optimal_cp)
+
+# Extract variable importance
+variable_importance <- optimal_tree$variable.importance
+most_important_vars <- names(variable_importance)[order(-variable_importance)][1:3] # Top 3 variables
+print(p)
+```
+In this experiment we have trained the decision tree with the same parameters as the one in 2c) which we criticized for heavily overfitting the data. This time, we run an experiment to determine the optimal tree depth, by iteratively pruning the node, that least reduces the deviance of the tree. We then plot the normalized deviance of the trees of different depth, for both the training data set, as well as the validation data set.As observable in the graph, we can see that the deviance is decreasing for both data sets, up until a leaf count of 14. At which point the model starts overfitting, which is illustrated by a rise in deviance on the validation data set, while it continues to shrink on the training data. Therefore the optimal leaf count is `r optimal_leaves`. <br>
+
+The most important variables for the tree with the optimal leaf count are `r most_important_vars`.
+
+### Estimating a confusion-matrix
+**Task statement:** <br>
+Estimate the confusion matrix, accuracy and F1 score for the test data by using the optimal model from step 3. Comment whether the model has a good predictive power and which of the measures (accuracy or F1-score) should be preferred here. <br>
+
+```{r experiment-3, echo=FALSE, message=FALSE, warning=FALSE}
+evaluate_model <- function(optimal_tree, test_data) {
+  predicted_probs <- predict(optimal_tree, test_data, type = "prob")
+ 
+  predicted_classes <- ifelse(predicted_probs[, 2] >= 0.5, "yes", "no")
+  predicted_classes <- factor(predicted_classes, levels = levels(test_data$y))
+  
+
+  confusion <- confusionMatrix(predicted_classes, test_data$y, positive = "yes")
+  
+  precision <- confusion$byClass["Precision"]
+  recall <- confusion$byClass["Recall"]
+  f1_score <- 2 * (precision * recall) / (precision + recall)
+  
+  list(
+    Confusion_Matrix = confusion$table,
+    Accuracy = confusion$overall["Accuracy"],
+    F1_Score = f1_score
+  )
+}
+
+results <- evaluate_model(optimal_tree, test)
+
+visualize_confusion_matrix <- function(confusion_matrix) {
+  cm_df <- as.data.frame(as.table(confusion_matrix))
+  colnames(cm_df) <- c("Prediction", "Reference", "Frequency")
+
+  ggplot(cm_df, aes(x = Reference, y = Prediction, fill = Frequency)) +
+    geom_tile(color = "white") +
+    geom_text(aes(label = Frequency), color = "black", size = 5) +
+    scale_fill_gradient(low = "white", high = "steelblue") +
+    labs(
+      title = "Confusion Matrix",
+      x = "Actual Class",
+      y = "Predicted Class"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.text = element_text(size = 12),
+      axis.title = element_text(size = 14),
+      plot.title = element_text(size = 16, hjust = 0.5)
+    )
+}
+
+
+confusion_plot <- visualize_confusion_matrix(results$Confusion_Matrix)
+print(confusion_plot)
+```
+<br>
+The accuracy of the model is `r results$Accuracy` and the F1-Score is `r results$F1_Score`.
+The confusion matrix shows that only around a fifth of minority classes are accurately predicted, this means despite having a relatively high accuracy, the model does not actually perform much better, than the tree consisting of merely the root node. Since there is a heavy class imbalance, it is reasonable to emphasize recall through a metric such as the F1-Score. If the class imbalance is even more extreme, one could even consider using the F2-Score, which places twice as much emphasize on recall.
+
+### Custom loss matrix
+Perform a decision tree classification of the test data with the following loss matrix,
+\[
+L = 
+\begin{bmatrix}
+\text{Observed} & \text{Predicted} \\
+& \text{yes} & \text{no} \\
+\text{yes} & 0 & 5 \\
+\text{no} & 1 & 0 \\
+\end{bmatrix}
+\]
+and report the confusion matrix for the test data. Compare the results with the results from step 4 and discuss how the rates have changed and why.
+
+```{r experiment-4, echo=FALSE, warning=FALSE, message=FALSE}
+
+loss_matrix <- matrix(c(0, 5, 1, 0), nrow = 2, byrow = TRUE,
+                      dimnames = list(c("yes", "no"), c("yes", "no")))
+
+
+custom_tree <- rpart(
+  y ~ ., 
+  data = train, 
+  method = "class",
+  parms = list(loss = loss_matrix),
+  control = rpart.control(cp = 0.0005)
+)
+
+# Prune to exactly 14 leaves
+prune_to_leaves <- function(tree, target_leaves) {
+  # Extract complexity table
+  cptable <- tree$cptable
+  
+  # Find the cp value corresponding to the target number of leaves
+  for (i in 1:nrow(cptable)) {
+    pruned_tree <- prune(tree, cp = cptable[i, "CP"])
+    num_leaves <- length(unique(pruned_tree$where))
+    if (num_leaves <= target_leaves) {
+      return(pruned_tree)
+    }
+  }
+  stop("Could not find a pruning level with the desired number of leaves.")
+}
+
+# Prune the tree to 14 leaves
+pruned_tree <- prune_to_leaves(custom_tree, 14)
+results <- evaluate_model(custom_tree, test)
+confusion_plot <- visualize_confusion_matrix(results$Confusion_Matrix)
+```
+Confusingly, the changed loss function seems to have little to no impact on our model, making it even more conservative, than it was before. Believing I set up the loss matrix incorrectly, I toyed with different values, and no matter the set up, an altered loss function would always lead to more conservative predictions.
+
+Accuracy is `r results$Accuracy` and F1-Score is `r results$F1_Score`.
