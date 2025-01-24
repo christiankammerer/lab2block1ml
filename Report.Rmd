@@ -1065,147 +1065,171 @@ confusion_plot <- visualize_confusion_matrix(results$Confusion_Matrix)
 
 
 
-##Assignment 3
 
-### Question 1
+#Assignment 3
+
+
+library(dplyr)
+library(ggplot2)
+library(caret)
+
+
+## Question 1
+
+
 communities <- read.csv("C:/Users/victo/OneDrive/Bureau/A1_SML/Machine Learning/Labs/Lab 2/communities.csv")
 
-# Remove "state" column and scale all variables except 'ViolentCrimesPerPop'
+
+
+# Scale all variables except 'ViolentCrimesPerPop'
 communities_scaled <- communities %>%
-  select(-state, -ViolentCrimesPerPop) %>%
+  select(-ViolentCrimesPerPop) %>%  # Exclude the target variable
   scale()
 
 
-# Compute covariance matrix
+
+
+# Compute the covariance matrix
 cov_matrix <- cov(communities_scaled)
 
-# Perform PCA using eigen
+# PCA using eigen decomposition
 eigen_decomp <- eigen(cov_matrix)
 
-# Eigenvalues
+# Extract eigenvalues
 eigen_values <- eigen_decomp$values
 
-# Proportion of variance explained by each component
+# Compute the proportion of variance explained
 var_explained <- eigen_values / sum(eigen_values)
+
+
+
 
 # Find the number of components needed to explain at least 95% variance
 cum_var_explained <- cumsum(var_explained)
 num_components <- which(cum_var_explained >= 0.95)[1]
 
-# Proportion of variance explained by the first two principal components
+# Calculate the proportion of variance explained by the first two components
 first_two_var <- sum(var_explained[1:2])
 
-
-# Print results
 cat("Number of components to explain at least 95% of variance:", num_components, "\n")
-cat("Proportion of variance explained by first two components:", first_two_var, "\n")
-
-pca_result <- princomp(communities %>% select(-state, -ViolentCrimesPerPop), cor = TRUE)
-
-# Extract loadings (weights for the principal components)
-loadings <- pca_result$loadings
-
-# Identify the top 5 features contributing to the first principal component
-# Sort by absolute value of contributions
-top_features <- abs(loadings[, 1]) %>%
-  sort(decreasing = TRUE) %>%
-  head(5)
-top_features_names <- names(top_features)
-
-cat("Top 5 features contributing to the first principal component:\n")
-print(top_features)
-
-# Identify the top 5 features contributing to the second principal component
-# Sort by absolute value of contributions
-top_features_2 <- abs(loadings[, 2]) %>%
-  sort(decreasing = TRUE) %>%
-  head(5)
-top_features_names_2 <- names(top_features_2)
-
-cat("Top 5 features contributing to the second principal component:\n")
-print(top_features_2)
+cat("Proportion of variance explained by the first two components:", first_two_var, "\n")
 
 
-### Question 2
+## Question 2
 
 
-# Create a data frame with PC1, PC2, and ViolentCrimesPerPop
-pca_scores <- as.data.frame(pca_result$scores)
+# PCA with princomp
+pca_princomp <- princomp(communities_scaled)
+
+
+
+# PCA scores and loadings
+pca_scores <- as.data.frame(pca_princomp$scores)
+pc1_loadings <- pca_princomp$loadings[, 1]  # First principal component loadings
+
+
+
+
+# Trace plot for the first principal component
+pc1_data <- data.frame(
+  Variable = colnames(communities_scaled),
+  Loading = pc1_loadings
+)
+
+ggplot(pc1_data, aes(x = Variable, y = Loading)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  theme_minimal() +
+  labs(
+    title = "Trace Plot of the First Principal Component (princomp)",
+    x = "Variables",
+    y = "Loadings"
+  ) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+
+
+# Top 5 variables contributing to PC1
+top5_pc1 <- pc1_data %>%
+  arrange(desc(abs(Loading))) %>%
+  slice(1:5)
+print(top5_pc1)
+
+
+
+
+
+# Add target variable to PCA scores
 pca_scores$ViolentCrimesPerPop <- communities$ViolentCrimesPerPop
 
-# Plot PC1 vs PC2, colored by ViolentCrimesPerPop
+# Plot PC1 vs PC2
 ggplot(pca_scores, aes(x = Comp.1, y = Comp.2, color = ViolentCrimesPerPop)) +
   geom_point() +
   scale_color_gradient(low = "blue", high = "red") +
-  labs(title = "PCA: PC1 vs PC2",
-       x = "PC1 : Population Exposed to Poverty ",
-       y = "PC2 : Population from Recent Immigration",
+  labs(title = "PCA: PC1 vs PC2 (princomp)",
+       x = "PC1",
+       y = "PC2",
        color = "Violent Crimes Per Pop") +
   theme_minimal()
 
-# Compute PCA scores
-pca_scores <- as.data.frame(scale(communities_scaled) %*% eigen_decomp$vectors)
-# 
-# Add the target variable for correlation analysis
- pca_scores$ViolentCrimesPerPop <- communities$ViolentCrimesPerPop
 
-# Correlation of PCs with the target
-cor_pc1 <- cor(pca_scores$V1, pca_scores$ViolentCrimesPerPop)
-cor_pc2 <- cor(pca_scores$V2, pca_scores$ViolentCrimesPerPop)
+
+
+cor_pc1 <- cor(pca_scores$Comp.1, pca_scores$ViolentCrimesPerPop)
+cor_pc2 <- cor(pca_scores$Comp.2, pca_scores$ViolentCrimesPerPop)
 
 cat("Correlation of PC1 with ViolentCrimesPerPop:", cor_pc1, "\n")
 cat("Correlation of PC2 with ViolentCrimesPerPop:", cor_pc2, "\n")
 
-# Step 1: Prepare the data
-# Remove "state" and ensure ViolentCrimesPerPop is the target variable
-features <- communities %>% select(-state)
-target <- communities$ViolentCrimesPerPop
 
-# Combine features and target into a single dataframe
-data <- cbind(features, ViolentCrimesPerPop = target)
+## Question 3
 
-# Step 2: Split data into training and testing sets (50/50 split)
+
+# Set seed for reproducibility
 set.seed(12345)
-train_index <- createDataPartition(data$ViolentCrimesPerPop, p = 0.5, list = FALSE)
-train_data <- data[train_index, ]
-test_data <- data[-train_index, ]
 
-#  Step 3: Scale features only (do not scale the target)
-train_features <- scale(train_data %>% select(-ViolentCrimesPerPop))
-test_features <- scale(test_data %>% select(-ViolentCrimesPerPop),
-                       center = attr(train_features, "scaled:center"),
-                       scale = attr(train_features, "scaled:scale"))
+# Number of rows in the dataset
+n <- nrow(communities)
 
-# Add back the target variable
-train_data_scaled <- as.data.frame(train_features)
-train_data_scaled$ViolentCrimesPerPop <- train_data$ViolentCrimesPerPop
+# Partition the data into training (50%) and test (50%) sets
+id <- sample(1:n, floor(n * 0.5))  # Randomly select 50% of the data for training
+train_data <- communities[id, ]
+test_data <- communities[-id, ]
 
-test_data_scaled <- as.data.frame(test_features)
-test_data_scaled$ViolentCrimesPerPop <- test_data$ViolentCrimesPerPop
+# Scale features and the target variable in both training and test datasets
+train_scaled <- train_data %>%
+  mutate(across(-ViolentCrimesPerPop, scale)) %>%
+  mutate(ViolentCrimesPerPop = scale(ViolentCrimesPerPop))
 
-# Step 4: Fit a linear regression model using training data
-lm_model <- lm(ViolentCrimesPerPop ~ ., data = train_data_scaled)
-
-# Step 5: Predict on training and testing data
-train_predictions <- predict(lm_model, newdata = train_data_scaled)
-test_predictions <- predict(lm_model, newdata = test_data_scaled)
-
-# Step 6: Compute Mean Squared Error (MSE) for training and test sets
-train_mse <- mean((train_predictions - train_data_scaled$ViolentCrimesPerPop)^2)
-test_mse <- mean((test_predictions - test_data_scaled$ViolentCrimesPerPop)^2)
+test_scaled <- test_data %>%
+  mutate(across(-ViolentCrimesPerPop, scale)) %>%
+  mutate(ViolentCrimesPerPop = scale(ViolentCrimesPerPop))
 
 
 
-# Output results
-cat("Training MSE:", train_mse, "\n")
-cat("Test MSE:", test_mse, "\n")
+
+# Fit linear regression model
+model <- lm(ViolentCrimesPerPop ~ ., data = train_scaled)
+
+# Compute training error
+train_predictions <- predict(model, train_scaled)
+train_error <- mean((train_predictions - train_scaled$ViolentCrimesPerPop)^2)
+
+# Compute test error
+test_predictions <- predict(model, test_scaled)
+test_error <- mean((test_predictions - test_scaled$ViolentCrimesPerPop)^2)
+
+
+
+cat("Training Error:", train_error, "\n")
+cat("Test Error:", test_error, "\n")
 
 
 ## Question 4
 
 
 
-# Step 1: Define the cost function
+# Define the cost function
 linear_regression_cost <- function(theta, X, y) {
   # Compute predictions
   predictions <- X %*% theta
@@ -1217,7 +1241,10 @@ linear_regression_cost <- function(theta, X, y) {
 }
 
 
-# Step 2: Optimize using BFGS with training data
+
+
+
+# Optimize using BFGS with training data
 train_test_errors <- function(train_X, train_y, test_X, test_y, max_iter = 2000) {
   # Initialize theta (parameter vector) to zeros
   initial_theta <- rep(0, ncol(train_X))
@@ -1252,19 +1279,23 @@ train_test_errors <- function(train_X, train_y, test_X, test_y, max_iter = 2000)
 }
 
 
-# Step 3: Prepare the data
+
+
+
 # Use the scaled train/test datasets from Question 3
-train_X <- as.matrix(train_data_scaled %>% select(-ViolentCrimesPerPop)) # Features
-train_y <- train_data_scaled$ViolentCrimesPerPop                      # Target
-test_X <- as.matrix(test_data_scaled %>% select(-ViolentCrimesPerPop))
-test_y <- test_data_scaled$ViolentCrimesPerPop
+train_X <- as.matrix(train_scaled %>% select(-ViolentCrimesPerPop)) # Features
+train_y <- train_scaled$ViolentCrimesPerPop                      # Target
+test_X <- as.matrix(test_scaled %>% select(-ViolentCrimesPerPop))
+test_y <- test_scaled$ViolentCrimesPerPop
 
 
-# Step 4: Run the optimization and track errors
+
+# Run the optimization and track errors
 results <- train_test_errors(train_X, train_y, test_X, test_y, max_iter = 2000)
 
 
-# Step 5: Plot the training and test errors
+
+# Plot the training and test errors
 train_errors <- results$train_errors
 test_errors <- results$test_errors
 
@@ -1272,6 +1303,9 @@ test_errors <- results$test_errors
 plot_range <- 501:length(train_errors)
 # Adjust the range of the y-axis to focus on the error values
 error_range <- range(train_errors[plot_range], test_errors[plot_range])
+
+
+
 
 # Plot training and test errors
 plot(plot_range, train_errors[plot_range], type = "l", col = "blue",
@@ -1281,6 +1315,8 @@ plot(plot_range, train_errors[plot_range], type = "l", col = "blue",
 lines(plot_range, test_errors[plot_range], col = "red")
 legend("topright", legend = c("Training Error", "Test Error"),
        col = c("blue", "red"), lty = 1)
+
+
 
 
 # Identify the iteration with the minimum test error
