@@ -157,7 +157,7 @@ cat("Test error for LASSO:",mean_squared_error(test$Fat, y_test_pred))
 
 ```
 
-```{r setup, include=TRUE, message=FALSE, warning=FALSE}
+```{r setup, include=TRUE, message=FALSE, warning=FALSE, echo=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 # Load necessary libraries
 library(tree)
