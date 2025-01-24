@@ -448,71 +448,96 @@ library(markdown)
 
 ## Assignment 3
 
+```{r,echo=FALSE}
+library(dplyr)
+library(ggplot2)
+library(caret)
+```
+
 
 ### Question 1
 
 ```{r,echo=FALSE}
-communities <- read.csv("communities.csv")
+communities <- read.csv("C:/Users/victo/OneDrive/Bureau/A1_SML/Machine Learning/Labs/Lab 2/communities.csv")
 ```
 
-
 ```{r,echo=FALSE}
-# Remove "state" column and scale all variables except 'ViolentCrimesPerPop'
+# Scale all variables except 'ViolentCrimesPerPop'
 communities_scaled <- communities %>%
-  select(-state, -ViolentCrimesPerPop) %>%
+  select(-ViolentCrimesPerPop) %>%  # Exclude the target variable
   scale()
-
 ```
 
 
 ```{r,echo=FALSE}
-# Compute covariance matrix
+# Compute the covariance matrix
 cov_matrix <- cov(communities_scaled)
 
-# Perform PCA using eigen
+# PCA using eigen decomposition
 eigen_decomp <- eigen(cov_matrix)
 
-# Eigenvalues
+# Extract eigenvalues
 eigen_values <- eigen_decomp$values
 
-# Proportion of variance explained by each component
+# Compute the proportion of variance explained
 var_explained <- eigen_values / sum(eigen_values)
 
+```
+
+```{r,echo=FALSE}
 # Find the number of components needed to explain at least 95% variance
 cum_var_explained <- cumsum(var_explained)
 num_components <- which(cum_var_explained >= 0.95)[1]
 
-# Proportion of variance explained by the first two principal components
+# Calculate the proportion of variance explained by the first two components
 first_two_var <- sum(var_explained[1:2])
 
-```
-
-```{r,echo=FALSE}
-# Print results
 cat("Number of components to explain at least 95% of variance:", num_components, "\n")
-cat("Proportion of variance explained by first two components:", first_two_var, "\n")
+cat("Proportion of variance explained by the first two components:", first_two_var, "\n")
+```
+
+### Question 2
+
+```{r,echo=FALSE}
+# PCA with princomp
+pca_princomp <- princomp(communities_scaled)
 ```
 
 ```{r,echo=FALSE}
-pca_result <- princomp(communities %>% select(-state, -ViolentCrimesPerPop), cor = TRUE)
+# PCA scores and loadings
+pca_scores <- as.data.frame(pca_princomp$scores)
+pc1_loadings <- pca_princomp$loadings[, 1]  # First principal component loadings
 
-# Extract loadings (weights for the principal components)
-loadings <- pca_result$loadings
 ```
 
 ```{r,echo=FALSE}
-# Identify the top 5 features contributing to the first principal component
-# Sort by absolute value of contributions
-top_features <- abs(loadings[, 1]) %>%
-  sort(decreasing = TRUE) %>%
-  head(5)
-top_features_names <- names(top_features)
+# Trace plot for the first principal component
+pc1_data <- data.frame(
+  Variable = colnames(communities_scaled),
+  Loading = pc1_loadings
+)
+
+ggplot(pc1_data, aes(x = Variable, y = Loading)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  theme_minimal() +
+  labs(
+    title = "Trace Plot of the First Principal Component (princomp)",
+    x = "Variables",
+    y = "Loadings"
+  ) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
 ```
 
 ```{r,echo=FALSE}
-cat("Top 5 features contributing to the first principal component:\n")
-print(top_features)
+# Top 5 variables contributing to PC1
+top5_pc1 <- pc1_data %>%
+  arrange(desc(abs(Loading))) %>%
+  slice(1:5)
+print(top5_pc1)
+
 ```
+
 medFamInc:  median family income (differs from household income for non-family households) (numeric - decimal)
 
 medIncome : median household income (numeric - decimal)
@@ -527,61 +552,24 @@ These 5 features represents the socioeconomic gradient. It seems logical that po
 
 
 ```{r,echo=FALSE}
-# Identify the top 5 features contributing to the second principal component
-# Sort by absolute value of contributions
-top_features_2 <- abs(loadings[, 2]) %>%
-  sort(decreasing = TRUE) %>%
-  head(5)
-top_features_names_2 <- names(top_features_2)
-```
-
-```{r,echo=FALSE}
-cat("Top 5 features contributing to the second principal component:\n")
-print(top_features_2)
-```
-
-PctRecImmig10 : percent of population who have immigrated within the last 10 years (numeric - decimal)
-
-PctRecImmig8 : percent of population who have immigrated within the last 8 years (numeric - decimal)
-
-PctRecImmig5 : percent of population who have immigrated within the last 5 years (numeric - decimal)
-
-PctRecentImmig : percent of population who have immigrated within the last 3 years (numeric - decimal)
-
-PctForeignBorn: percent of people foreign born (numeric - decimal)
-
-The second componant contains features regarding the pourcentage of the population that immigrated in the last 10 years.
-
-### Question 2
-
-```{r,echo=FALSE}
-# Create a data frame with PC1, PC2, and ViolentCrimesPerPop
-pca_scores <- as.data.frame(pca_result$scores)
+# Add target variable to PCA scores
 pca_scores$ViolentCrimesPerPop <- communities$ViolentCrimesPerPop
-```
 
-```{r,echo=FALSE}
-# Plot PC1 vs PC2, colored by ViolentCrimesPerPop
+# Plot PC1 vs PC2
 ggplot(pca_scores, aes(x = Comp.1, y = Comp.2, color = ViolentCrimesPerPop)) +
   geom_point() +
   scale_color_gradient(low = "blue", high = "red") +
-  labs(title = "PCA: PC1 vs PC2",
-       x = "PC1 : Population Exposed to Poverty ",
-       y = "PC2 : Population from Recent Immigration",
+  labs(title = "PCA: PC1 vs PC2 (princomp)",
+       x = "PC1",
+       y = "PC2",
        color = "Violent Crimes Per Pop") +
   theme_minimal()
+
 ```
 
 ```{r,echo=FALSE}
-# Compute PCA scores
-pca_scores <- as.data.frame(scale(communities_scaled) %*% eigen_decomp$vectors)
-# 
-# Add the target variable for correlation analysis
- pca_scores$ViolentCrimesPerPop <- communities$ViolentCrimesPerPop
-
-# Correlation of PCs with the target
-cor_pc1 <- cor(pca_scores$V1, pca_scores$ViolentCrimesPerPop)
-cor_pc2 <- cor(pca_scores$V2, pca_scores$ViolentCrimesPerPop)
+cor_pc1 <- cor(pca_scores$Comp.1, pca_scores$ViolentCrimesPerPop)
+cor_pc2 <- cor(pca_scores$Comp.2, pca_scores$ViolentCrimesPerPop)
 
 cat("Correlation of PC1 with ViolentCrimesPerPop:", cor_pc1, "\n")
 cat("Correlation of PC2 with ViolentCrimesPerPop:", cor_pc2, "\n")
@@ -597,64 +585,54 @@ To deepen this analysis, we can examine the interaction between immigration and 
 
 
 ```{r,echo=FALSE}
-# Step 1: Prepare the data
-# Remove "state" and ensure ViolentCrimesPerPop is the target variable
-features <- communities %>% select(-state)
-target <- communities$ViolentCrimesPerPop
-
-# Combine features and target into a single dataframe
-data <- cbind(features, ViolentCrimesPerPop = target)
-```
-
-```{r,echo=FALSE}
-# Step 2: Split data into training and testing sets (50/50 split)
+# Set seed for reproducibility
 set.seed(12345)
-train_index <- createDataPartition(data$ViolentCrimesPerPop, p = 0.5, list = FALSE)
-train_data <- data[train_index, ]
-test_data <- data[-train_index, ]
 
-#  Step 3: Scale features only (do not scale the target)
-train_features <- scale(train_data %>% select(-ViolentCrimesPerPop))
-test_features <- scale(test_data %>% select(-ViolentCrimesPerPop),
-                       center = attr(train_features, "scaled:center"),
-                       scale = attr(train_features, "scaled:scale"))
+# Number of rows in the dataset
+n <- nrow(communities)
 
-# Add back the target variable
-train_data_scaled <- as.data.frame(train_features)
-train_data_scaled$ViolentCrimesPerPop <- train_data$ViolentCrimesPerPop
+# Partition the data into training (50%) and test (50%) sets
+id <- sample(1:n, floor(n * 0.5))  # Randomly select 50% of the data for training
+train_data <- communities[id, ]
+test_data <- communities[-id, ]
 
-test_data_scaled <- as.data.frame(test_features)
-test_data_scaled$ViolentCrimesPerPop <- test_data$ViolentCrimesPerPop
-```
+# Scale features and the target variable in both training and test datasets
+train_scaled <- train_data %>%
+  mutate(across(-ViolentCrimesPerPop, scale)) %>%
+  mutate(ViolentCrimesPerPop = scale(ViolentCrimesPerPop))
 
-```{r,echo=FALSE}
-# Step 4: Fit a linear regression model using training data
-lm_model <- lm(ViolentCrimesPerPop ~ ., data = train_data_scaled)
-
-# Step 5: Predict on training and testing data
-train_predictions <- predict(lm_model, newdata = train_data_scaled)
-test_predictions <- predict(lm_model, newdata = test_data_scaled)
-
-# Step 6: Compute Mean Squared Error (MSE) for training and test sets
-train_mse <- mean((train_predictions - train_data_scaled$ViolentCrimesPerPop)^2)
-test_mse <- mean((test_predictions - test_data_scaled$ViolentCrimesPerPop)^2)
-
+test_scaled <- test_data %>%
+  mutate(across(-ViolentCrimesPerPop, scale)) %>%
+  mutate(ViolentCrimesPerPop = scale(ViolentCrimesPerPop))
 
 ```
 
 ```{r,echo=FALSE}
-# Output results
-cat("Training MSE:", train_mse, "\n")
-cat("Test MSE:", test_mse, "\n")
+# Fit linear regression model
+model <- lm(ViolentCrimesPerPop ~ ., data = train_scaled)
+
+# Compute training error
+train_predictions <- predict(model, train_scaled)
+train_error <- mean((train_predictions - train_scaled$ViolentCrimesPerPop)^2)
+
+# Compute test error
+test_predictions <- predict(model, test_scaled)
+test_error <- mean((test_predictions - test_scaled$ViolentCrimesPerPop)^2)
 ```
 
-The training and test MSE have a low and close value, the model doesnt seem to overfit
+```{r,echo=FALSE}
+cat("Training Error:", train_error, "\n")
+cat("Test Error:", test_error, "\n")
+```
+
+
+The test error is higher than the training error, but the difference is not very large. This indicates that the model generalizes reasonably well and is not heavily overfitting.
 
 ### Question 4
 
 
 ```{r}
-# Step 1: Define the cost function
+# Define the cost function
 linear_regression_cost <- function(theta, X, y) {
   # Compute predictions
   predictions <- X %*% theta
@@ -669,7 +647,7 @@ linear_regression_cost <- function(theta, X, y) {
 
 
 ```{r}
-# Step 2: Optimize using BFGS with training data
+# Optimize using BFGS with training data
 train_test_errors <- function(train_X, train_y, test_X, test_y, max_iter = 2000) {
   # Initialize theta (parameter vector) to zeros
   initial_theta <- rep(0, ncol(train_X))
@@ -707,21 +685,20 @@ train_test_errors <- function(train_X, train_y, test_X, test_y, max_iter = 2000)
 
 
 ```{r}
-# Step 3: Prepare the data
 # Use the scaled train/test datasets from Question 3
-train_X <- as.matrix(train_data_scaled %>% select(-ViolentCrimesPerPop)) # Features
-train_y <- train_data_scaled$ViolentCrimesPerPop                      # Target
-test_X <- as.matrix(test_data_scaled %>% select(-ViolentCrimesPerPop))
-test_y <- test_data_scaled$ViolentCrimesPerPop
+train_X <- as.matrix(train_scaled %>% select(-ViolentCrimesPerPop)) # Features
+train_y <- train_scaled$ViolentCrimesPerPop                      # Target
+test_X <- as.matrix(test_scaled %>% select(-ViolentCrimesPerPop))
+test_y <- test_scaled$ViolentCrimesPerPop
 ```
 
 ```{r}
-# Step 4: Run the optimization and track errors
+# Run the optimization and track errors
 results <- train_test_errors(train_X, train_y, test_X, test_y, max_iter = 2000)
 ```
 
 ```{r}
-# Step 5: Plot the training and test errors
+# Plot the training and test errors
 train_errors <- results$train_errors
 test_errors <- results$test_errors
 
@@ -732,7 +709,7 @@ error_range <- range(train_errors[plot_range], test_errors[plot_range])
 
 ```
 
-```{r,,echo=FALSE}
+```{r,echo=FALSE}
 # Plot training and test errors
 plot(plot_range, train_errors[plot_range], type = "l", col = "blue",
      xlab = "Iteration", ylab = "Error",
@@ -746,7 +723,7 @@ legend("topright", legend = c("Training Error", "Test Error"),
 
 
 
-```{r,,echo=FALSE}
+```{r,echo=FALSE}
 # Identify the iteration with the minimum test error
 optimal_iteration <- which.min(test_errors)
 cat("Optimal Iteration:", optimal_iteration, "\n")
@@ -755,24 +732,20 @@ cat("Test Error at Optimal Iteration:", test_errors[optimal_iteration], "\n")
 
 ```
 
-The model generalizes well, achieving the best balance between minimizing the training error and avoiding overfitting to the training data.
-The optimal iteration (4432) is the point at which the test error is minimized, continuing optimization beyond this point does not benefit the test performance and risks overfitting.
+The model in Part 4 generalizes well, with the optimal iteration (2182) achieving the lowest test error of 0.303. Beyond this iteration, continued optimization does not improve performance and risks overfitting.
 
 
 Training Error Comparison:
 
-The training error in Part 3 (0.0145) is lower than the one in Part 4 (0.07). This difference arises because:
-In Part 3, we used a standard regression approach with an intercept.
-In Part 4, the model optimizes parameters without an intercept, making it less flexible and potentially leading to higher error.
+Part 3: 0.275
+Part 4: 0.303 The lower training error in Part 3 reflects its use of an intercept, providing greater flexibility to fit the training data.
 
 Test Error Comparison:
 
-The test error in Part 3 (0.0204) is also lower than in Part 4 (0.078). This suggests that the model in Part 3 generalizes better to unseen data compared to the simpler model used in Part 4.
+Part 3: 0.382
+Part 4: 0.355 The lower test error in Part 4 suggests that the simpler model without an intercept generalizes better, avoiding overfitting seen in Part 3.
 
-Model Complexity:
-
-The model in Part 3 includes an intercept term and uses the standard lm() fitting process, which likely leads to better performance.
-The model in Part 4 omits the intercept and uses raw optimization, making it less precise and leading to higher errors.
+While the model in Part 3 fits the training data better, the simpler model in Part 4 strikes a better balance between training and test performance, indicating improved generalization.
 
 
 ## Theory
